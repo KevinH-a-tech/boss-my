@@ -39,6 +39,18 @@ window.BOSS_CONFIG = {
   adminEmail: "altmxjghd1@gmail.com",
   // 스크린샷 자동 읽기용 Fraud Defense(reCAPTCHA Enterprise) 사이트 키 (App Check)
   appCheckSiteKey: "",
+  // 스크린샷 자동 읽기(AI)만 예전에 쓰던 프로젝트로 보냄 (보스표·로그인 데이터는 아래 firebase 프로젝트 사용)
+  ai: {
+    appCheckSiteKey: "6LcVb-UtAAAAAKV9k2xm6X5k3S20kvUXATBMb-PK",
+    firebase: {
+      apiKey: "AIzaSyCar8GbRTMHXIEFNSp1vBVwXv9izGftNXA",
+      authDomain: "zeus-boss-timer-311af.firebaseapp.com",
+      projectId: "zeus-boss-timer-311af",
+      storageBucket: "zeus-boss-timer-311af.firebasestorage.app",
+      messagingSenderId: "740939356411",
+      appId: "1:740939356411:web:38012fd8096334da6b785e"
+    }
+  },
   // 스크린샷 자동 읽기에 쓸 Gemini 모델 (앞에서부터 순서대로 시도)
   aiModels: ["gemini-flash-latest", "gemini-3.5-flash", "gemini-3.1-flash-lite"],
   firebase: {
@@ -677,7 +689,7 @@ textarea.g-in{resize:vertical;min-height:96px;line-height:1.55}
 (function(){
 "use strict";
 var PW = "3383";
-var BUILD = "2026-10-23 14:00"; // 이 파일을 만든 시각 (한국 시간)
+var BUILD = "2026-10-23 16:00"; // 이 파일을 만든 시각 (한국 시간)
 var latestBuild = null, buildChecked = false;
 var M = 60000, H = 3600000, D = 86400000, KST = 9 * H;
 /* 서버 시각 보정: PC마다 시계가 달라도 같은 남은 시간이 나오도록 서버 시각 기준으로 계산 */
@@ -735,7 +747,10 @@ if (!LIVE) { try { admin = sessionStorage.getItem("boss-admin") === "1"; } catch
 
 /* ---------- screenshot reading via Firebase AI Logic (Gemini Developer API, plain fetch) ---------- */
 if (LIVE) {
-  var AI_HOST = "https://firebasevertexai.googleapis.com/v1beta/projects/" + encodeURIComponent(CFG.firebase.projectId) + "/models/";
+  var AIC = (CFG.ai && CFG.ai.firebase && CFG.ai.firebase.apiKey) ? CFG.ai : { firebase: CFG.firebase, appCheckSiteKey: CFG.appCheckSiteKey };
+  var AIF = AIC.firebase, aiApp = null;
+  try { aiApp = AIF === CFG.firebase ? firebase.app() : firebase.initializeApp(AIF, "ai"); } catch (e) { aiApp = null; }
+  var AI_HOST = "https://firebasevertexai.googleapis.com/v1beta/projects/" + encodeURIComponent(AIF.projectId) + "/models/";
   var fileToB64 = function(f){
     return new Promise(function(res, rej){
       var r = new FileReader();
@@ -746,22 +761,22 @@ if (LIVE) {
   };
   var appCheckOn = false;
   var getAppCheck = function(){
-    if (!CFG.appCheckSiteKey || !firebase.appCheck) return Promise.resolve(null);
+    if (!AIC.appCheckSiteKey || !firebase.appCheck || !aiApp) return Promise.resolve(null);
     try {
       if (!appCheckOn) {
         var P = firebase.appCheck.ReCaptchaEnterpriseProvider;
-        firebase.appCheck().activate(P ? new P(CFG.appCheckSiteKey) : CFG.appCheckSiteKey, true);
+        firebase.appCheck(aiApp).activate(P ? new P(AIC.appCheckSiteKey) : AIC.appCheckSiteKey, true);
         appCheckOn = true;
       }
-      return firebase.appCheck().getToken(false).then(function(t){ return t && t.token; }).catch(function(){ return null; });
+      return firebase.appCheck(aiApp).getToken(false).then(function(t){ return t && t.token; }).catch(function(){ return null; });
     } catch (e) { return Promise.resolve(null); }
   };
   var callModel = function(name, parts){
     return getAppCheck().then(function(tok){
       var hd = {
         "Content-Type": "application/json",
-        "x-goog-api-key": CFG.firebase.apiKey,
-        "X-Firebase-Appid": CFG.firebase.appId,
+        "x-goog-api-key": AIF.apiKey,
+        "X-Firebase-Appid": AIF.appId,
         "x-goog-api-client": "gl-js/2.16.0 fire/2.16.0"
       };
       if (tok) hd["X-Firebase-AppCheck"] = tok; // 토큰이 없으면 헤더를 아예 보내지 않음 (빈 값은 '잘못된 토큰'으로 거절됨)
@@ -791,12 +806,18 @@ if (LIVE) {
             throw e;
           });
         };
+        var all = models.slice(), round = 0;
+        var quota = function(e){ return e.status === 429 || /resource_exhausted|quota/i.test((e.code || "") + " " + (e.message || "")); };
         var next = function(){
-          if (!models.length) return Promise.reject(lastErr || new Error("no model"));
+          if (!models.length) {
+            // 모든 모델이 사용량 한도(1분당 요청 수)에 걸렸으면 25초 쉬고 한 번 더 시도
+            if (lastErr && quota(lastErr) && round < 1) { round++; models = all.slice(); return wait(25000).then(next); }
+            return Promise.reject(lastErr || new Error("no model"));
+          }
           return tryModel(models.shift(), 2).catch(function(e){
             lastErr = e;
-            if (e.status === 429 || e.status === 401 || (e.status === 403 && /not been used|disabled|not enabled/i.test(e.message))) throw e;
-            return next();
+            if (e.status === 401 || (e.status === 403 && /not been used|disabled|not enabled/i.test(e.message))) throw e;
+            return next(); // 사용량 한도(429)는 모델마다 따로라서 다음 모델로 넘어감
           });
         };
         return next();
@@ -1384,8 +1405,9 @@ function stepRead(){
       return;
     }
     var idx = i++;
-    step('<div class="ask"><span class="spin"></span>스크린샷에서 보스 시간을 읽는 중이에요' + (files.length > 1 ? ' (' + (idx + 1) + ' / ' + files.length + '장)' : '') + '. 한 장에 10~30초 정도 걸려요.</div>');
-    window.BOSS_AI.read([files[idx]], prompt).then(function(text){
+    step('<div class="ask"><span class="spin"></span>스크린샷에서 보스 시간을 읽는 중이에요' + (files.length > 1 ? ' (' + (idx + 1) + ' / ' + files.length + '장)' : '') + '. 한 장에 10~30초 정도 걸려요. 사용량이 몰리면 잠시 기다렸다가 다시 시도해요.</div>');
+    // 1분당 요청 한도에 덜 걸리도록 두 번째 장부터는 4초 쉬고 보냄
+    (idx ? new Promise(function(r){ setTimeout(r, 4000); }) : Promise.resolve()).then(function(){ return window.BOSS_AI.read([files[idx]], prompt); }).then(function(text){
       parseAI(text).forEach(function(r){
         if (r && r.id && (r.status === "timer" || r.status === "live" || r.status === "fixed") && !found[r.id] && find(r.id)) { r.img = idx; found[r.id] = r; }
       });
