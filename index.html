@@ -677,7 +677,7 @@ textarea.g-in{resize:vertical;min-height:96px;line-height:1.55}
 (function(){
 "use strict";
 var PW = "3383";
-var BUILD = "2026-10-23 13:00"; // 이 파일을 만든 시각 (한국 시간)
+var BUILD = "2026-10-23 14:00"; // 이 파일을 만든 시각 (한국 시간)
 var latestBuild = null, buildChecked = false;
 var M = 60000, H = 3600000, D = 86400000, KST = 9 * H;
 /* 서버 시각 보정: PC마다 시계가 달라도 같은 남은 시간이 나오도록 서버 시각 기준으로 계산 */
@@ -757,15 +757,17 @@ if (LIVE) {
     } catch (e) { return Promise.resolve(null); }
   };
   var callModel = function(name, parts){
-    return getAppCheck().then(function(tok){ return fetch(AI_HOST + encodeURIComponent(name) + ":generateContent", {
-      method: "POST",
-      headers: {
+    return getAppCheck().then(function(tok){
+      var hd = {
         "Content-Type": "application/json",
         "x-goog-api-key": CFG.firebase.apiKey,
         "X-Firebase-Appid": CFG.firebase.appId,
-        "x-goog-api-client": "gl-js/2.16.0 fire/2.16.0",
-        "X-Firebase-AppCheck": tok || ""
-      },
+        "x-goog-api-client": "gl-js/2.16.0 fire/2.16.0"
+      };
+      if (tok) hd["X-Firebase-AppCheck"] = tok; // 토큰이 없으면 헤더를 아예 보내지 않음 (빈 값은 '잘못된 토큰'으로 거절됨)
+      return fetch(AI_HOST + encodeURIComponent(name) + ":generateContent", {
+      method: "POST",
+      headers: hd,
       body: JSON.stringify({ contents: [{ role: "user", parts: parts }], generationConfig: { responseMimeType: "application/json", temperature: 0 } })
     }); }).then(function(r){
       return r.json().catch(function(){ return {}; }).then(function(j){
