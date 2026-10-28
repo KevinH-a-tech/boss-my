@@ -20,7 +20,8 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="제우스 보스 알리미">
+<meta name="apple-mobile-web-app-title" content="홍신나 전용사이트">
+<meta name="application-name" content="홍신나 전용사이트">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -858,9 +859,15 @@ function clockLeft(ms){
 function since(ms){ var m = Math.floor(ms / M); return m < 60 ? m + "분 경과" : Math.floor(m / 60) + "시간 " + (m % 60) + "분 경과"; }
 /* 리젠 보스 처치 소요시간(초): 다음 젠 = 출현 + 처치 소요 + 리젠 주기 */
 var KILL_SEC = {35:5, 40:10, 45:15, 55:20, 60:25, 65:30};
-/* 게임은 남은 시간을 분 단위로만 보여줌 ("1시간 43분 후" = 실제로는 1:43:00~1:43:59).
-   그 1분 범위의 가운데로 잡도록 30초를 더함. 늘 늦게 잡히면 줄이고, 늘 빨리 잡히면 늘리면 됨 */
-var SHOT_PAD = 30 * 1000;
+/* 스크린샷 남은 시간 → 출현 시각 보정
+   - 초까지 적혀 있으면 ("1시간 30분 15초 후") 그대로 정확히 계산
+   - 분 단위까지만 있으면 ("1시간 30분 후") 30초를 뺌 → 1:29:30 후로 입력
+   늘 늦게 잡히면 더 빼고(예: -45초), 늘 빨리 잡히면 덜 빼면 됨 */
+var SHOT_PAD = -30 * 1000;
+function shotOffset(h, m, s){
+  var t = (+h || 0) * H + (+m || 0) * M;
+  return (s !== "" && s != null) ? t + (+s || 0) * 1000 : t + SHOT_PAD;
+}
 function killMs(b){ return (b && b.type === "respawn" && KILL_SEC[b.lv]) ? KILL_SEC[b.lv] * 1000 : 0; }
 function cycLabel(b){ var s = killMs(b) / 1000; return ivLabel(b.interval) + (b.interval && s ? " · 처치 " + s + "초" : ""); }
 function ivLabel(min){
@@ -1373,11 +1380,12 @@ function readPrompt(){
   var list = state.bosses.map(function(b){ return b.id + ": " + (b.lv ? "Lv." + b.lv + " " : "") + b.name + " (" + RNAME[b.region] + ", " + (b.type === "fixed" ? "고정 출현" : "리젠") + ")"; }).join("\n");
   return "첨부 이미지는 모바일 게임 '제우스: 오만의신'의 '콘텐츠 현황판' 캡처입니다. 각 보스 카드 왼쪽 아래에 출현 정보가 적혀 있습니다.\n" +
     "- 'N시간 M분 후 출현', 'M분 후 출현', 'N시간 후 출현' → status \"timer\", hours, minutes (없는 값은 0)\n" +
+    "- 'N시간 M분 S초 후', 'M분 S초 후', '01:29:45'처럼 초까지 적혀 있으면 seconds도 함께 주세요. 초가 화면에 없으면 seconds는 절대 넣지 마세요(0으로도 넣지 말 것)\n" +
     "- '출현 중' → status \"live\"\n" +
     "- '수요일 21시 출현', '매일 0시, 12시, 18시 출현'처럼 요일/시각이 적힌 경우 → status \"fixed\", days(예: \"수\", \"월,목\", \"매일\"), hours(예: \"21\", \"0,12,18\"), minute(없으면 0)\n" +
     "아래 목록의 보스 각각에 대해 이미지에서 읽은 내용을 알려주세요. 카드의 보스 이름이 정확히 같은 경우만 대응시키세요. '봉인된 아모르포스'와 '아모르포스'는 서로 다른 보스입니다. '심연의 틈'처럼 같은 이름의 카드가 여러 개면 한 번만 답하세요. 이미지에 없는 보스는 status를 \"missing\"으로 하세요.\n\n" +
     "보스 목록 (id: 이름):\n" + list + "\n\n" +
-    "JSON 배열로만 답하세요. 예: [{\"id\":\"bedix\",\"status\":\"timer\",\"hours\":1,\"minutes\":43},{\"id\":\"giant\",\"status\":\"live\"},{\"id\":\"arachne\",\"status\":\"fixed\",\"days\":\"수\",\"hours\":\"21\",\"minute\":0},{\"id\":\"alastor\",\"status\":\"missing\"}]";
+    "JSON 배열로만 답하세요. 예: [{\"id\":\"bedix\",\"status\":\"timer\",\"hours\":1,\"minutes\":43},{\"id\":\"gotsis\",\"status\":\"timer\",\"hours\":0,\"minutes\":12,\"seconds\":40},{\"id\":\"giant\",\"status\":\"live\"},{\"id\":\"arachne\",\"status\":\"fixed\",\"days\":\"수\",\"hours\":\"21\",\"minute\":0},{\"id\":\"alastor\",\"status\":\"missing\"}]";
 }
 function parseAI(text){
   var t = String(text || "").replace(/```json|```/g, "").trim();
@@ -1429,7 +1437,7 @@ function stepTable(found, msg, failed){
     var r = found[b.id] || {}, live = r.status === "live", timer = r.status === "timer", img = r.img || 0;
     return '<div class="res-row" data-b="' + b.id + '" data-t="r"><input type="checkbox" class="ap" aria-label="' + esc(b.name) + ' 저장"' + (live || timer ? " checked" : "") + '>' +
       '<div class="rn"><b>' + esc(b.name) + '</b> <span class="hint">' + RNAME[b.region] + '</span></div><div class="when num"></div>' +
-      '<div class="inp"><input class="field rh" type="number" min="0" max="99" value="' + (timer ? (+r.hours || 0) : "") + '" aria-label="시간"> 시간 <input class="field rm" type="number" min="0" max="59" value="' + (timer ? (+r.minutes || 0) : "") + '" aria-label="분"> 분 후 ' +
+      '<div class="inp"><input class="field rh" type="number" min="0" max="99" value="' + (timer ? (+r.hours || 0) : "") + '" aria-label="시간"> 시간 <input class="field rm" type="number" min="0" max="59" value="' + (timer ? (+r.minutes || 0) : "") + '" aria-label="분"> 분 <input class="field rs" type="number" min="0" max="59" placeholder="−30" value="' + (timer && r.seconds != null && r.seconds !== "" ? (+r.seconds || 0) : "") + '" aria-label="초 (비우면 30초 빼서 계산)" title="초를 비워 두면 분 단위로 보고 30초를 빼서 계산해요"> 초 후 ' +
       '<label class="lvl"><input type="checkbox" class="lv"' + (live ? " checked" : "") + '> 출현 중</label>' + srcSel(img) + '</div></div>';
   }
   function fixRow(b){
@@ -1444,7 +1452,7 @@ function stepTable(found, msg, failed){
   step('<div class="ask" style="font-size:14px">기준 시각 <b>' + (multi ? shot.files.length + '장 (' + shot.bases.map(hm).join(", ") + ')' : askDate(shot.bases[0])) + '</b><p class="hint">' + esc(msg) + '</p>' + (failed && window.BOSS_AI ? '<button class="btn" type="button" data-s="yes" style="margin-top:8px">↻ 다시 읽기</button>' : '') +
     (multi ? '<p class="hint" style="margin-top:6px">장마다 찍은 시각이 달라요. 각 보스 줄 오른쪽에서 <b>그 보스가 찍힌 스크린샷 번호</b>를 골라 주세요. 한 보스를 고르면 같은 지역 보스도 같이 바뀌어요.</p>' : '') + '</div>' +
     '<div class="res-list">' +
-    '<div class="res-sec">리젠 보스 <span class="hint">○시간 ○분 후 출현</span></div>' + respawnBosses().map(respRow).join("") +
+    '<div class="res-sec">리젠 보스 <span class="hint">○시간 ○분 ○초 후 출현 · 초가 비어 있으면 30초 빼서 계산</span></div>' + respawnBosses().map(respRow).join("") +
     '<div class="res-sec">고정 출현 보스 <span class="hint">일정이 바뀐 보스만 체크돼요 (예: 월,목 / 21)</span></div>' + fixedBosses().map(fixRow).join("") +
     '</div>' +
     '<div class="foot"><span class="hint" id="apCount" style="margin-right:auto"></span><button class="btn primary big" type="button" data-s="apply">체크한 보스 저장</button></div>');
@@ -1457,9 +1465,9 @@ function stepTable(found, msg, failed){
       if (on) cnt++;
       tr.style.opacity = on ? "1" : ".6";
       if (tr.getAttribute("data-t") === "r") {
-        var b = find(tr.getAttribute("data-b")), base = rowBase(tr), lv = tr.querySelector(".lv").checked, h = tr.querySelector(".rh").value, m = tr.querySelector(".rm").value;
+        var b = find(tr.getAttribute("data-b")), base = rowBase(tr), lv = tr.querySelector(".lv").checked, h = tr.querySelector(".rh").value, m = tr.querySelector(".rm").value, sc = tr.querySelector(".rs").value;
         if (lv) { var nx = base + (b.interval || 0) * M + killMs(b); w.textContent = b.interval ? "다음 " + dayLabel(nx, now) + " " + hm(nx) : "출현 중"; }
-        else w.textContent = (h !== "" || m !== "") ? (function(t){ return dayLabel(t, now) + " " + hm(t) + ":" + pad(k(t).getUTCSeconds()); })(base + (+h || 0) * H + (+m || 0) * M + SHOT_PAD) : "—";
+        else w.textContent = (h !== "" || m !== "" || sc !== "") ? (function(t){ return dayLabel(t, now) + " " + hm(t) + ":" + pad(k(t).getUTCSeconds()); })(base + shotOffset(h, m, sc)) : "—";
       } else {
         var days = parseDays(tr.querySelector(".fdays").value), hours = parseHours(tr.querySelector(".fhrs").value), mi = +tr.querySelector(".fmin").value || 0;
         if (!days.length || !hours.length) { w.textContent = "요일·시각 확인"; return; }
@@ -1496,9 +1504,9 @@ function applyShot(){
       var sel = tr.querySelector(".src"), base = shot.bases[sel ? +sel.value : 0];
       if (tr.querySelector(".lv").checked) { b.alive = false; b.anchor = base; }
       else {
-        var h = tr.querySelector(".rh").value, m = tr.querySelector(".rm").value;
-        if (h === "" && m === "") { bad.push(b.name); return; }
-        b.alive = false; b.anchor = base + (+h || 0) * H + (+m || 0) * M + SHOT_PAD;
+        var h = tr.querySelector(".rh").value, m = tr.querySelector(".rm").value, sc = tr.querySelector(".rs").value;
+        if (h === "" && m === "" && sc === "") { bad.push(b.name); return; }
+        b.alive = false; b.anchor = base + shotOffset(h, m, sc);
       }
       used.push(base);
     } else {

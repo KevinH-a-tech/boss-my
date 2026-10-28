@@ -1,7 +1,6 @@
 {
-  "name": "의정부시 길드 보스 스케쥴표",
-  "short_name": "보스 스케쥴",
-  "description": "제우스: 오만의신 포세이돈2 의정부시 길드 보스 출현 시간표",
+  "name": "홍신나 전용사이트",
+  "short_name": "홍신나 전용사이트",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,8 +8,7 @@
   "theme_color": "#14120f",
   "lang": "ko",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
   ]
 }
