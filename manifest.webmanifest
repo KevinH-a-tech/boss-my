@@ -1,14 +1,19 @@
 {
   "name": "홍신나 전용사이트",
-  "short_name": "홍신나 전용사이트",
+  "short_name": "홍신나 전용",
+  "description": "제우스: 오만의신 · 포세이돈2 길드 페이지 · 보스표 · 공지 · 일정 · 꿀팁",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#14120f",
   "theme_color": "#14120f",
   "lang": "ko",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
